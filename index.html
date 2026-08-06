@@ -701,6 +701,37 @@
         </div>
       </div>
 
+      <!-- Portfolio summary stats + asset-mix donut (Kevin · Task 1) -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-body" style="display:flex;gap:32px;align-items:center;flex-wrap:wrap">
+          <div class="donut-wrap" style="width:150px;height:150px;margin:0">
+            <canvas id="cp-mix-chart"></canvas>
+            <div class="donut-center">
+              <div class="donut-pct" id="cp-mix-equity-pct" style="font-size:1.2rem">—</div>
+              <div class="donut-label">equity</div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:240px;display:flex;gap:28px;flex-wrap:wrap">
+            <div>
+              <div class="stat-label">Total Value</div>
+              <div class="stat-value" id="cp-total" style="font-size:1.3rem">—</div>
+            </div>
+            <div>
+              <div class="stat-label">Positions</div>
+              <div class="stat-value" id="cp-count" style="font-size:1.3rem">—</div>
+            </div>
+            <div>
+              <div class="stat-label">ESG Screened</div>
+              <div class="stat-value" id="cp-summary-esg" style="font-size:1.3rem">—</div>
+            </div>
+            <div>
+              <div class="stat-label">Top Position</div>
+              <div class="stat-value" id="cp-top" style="font-size:1.3rem">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid-two">
         <!-- ESG exposure (JC · Task 4) -->
         <div class="card">
@@ -1154,6 +1185,7 @@ function showConnBanner() {
 
 // ── Copilot (Kevin T1 · JC T4 · Austin T3/T5) ─────────────────────────────────
 let esgChartInst = null;
+let cpMixChartInst = null;
 
 // Unwrap the { data, error } envelope used by /api/copilot/*
 async function fetchData(url, opts) {
@@ -1175,6 +1207,26 @@ async function loadClientSummary() {
     const s = await fetchData(`${API}/copilot/clients/${currentClient()}/summary`);
     document.getElementById('cp-headline').textContent = s.name;
     document.getElementById('cp-narrative').textContent = s.narrative;
+
+    document.getElementById('cp-total').textContent = fmt(s.total_market_value_usd);
+    document.getElementById('cp-count').textContent = s.position_count;
+    document.getElementById('cp-summary-esg').textContent = Math.round(s.esg_screened_pct * 100) + '%';
+    document.getElementById('cp-top').textContent = s.top_position ? s.top_position.symbol : '—';
+
+    const equity = s.asset_mix.equity || 0;
+    const fixedIncome = s.asset_mix.fixed_income || 0;
+    document.getElementById('cp-mix-equity-pct').textContent = Math.round(equity * 100) + '%';
+
+    const ctx = document.getElementById('cp-mix-chart').getContext('2d');
+    if (cpMixChartInst) cpMixChartInst.destroy();
+    cpMixChartInst = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Equity', 'Fixed Income'],
+        datasets: [{ data: [equity, fixedIncome], backgroundColor: [SECTOR_COLORS[0], SECTOR_COLORS[1]], borderWidth: 0, hoverOffset: 4 }],
+      },
+      options: { cutout: '72%', plugins: { legend: { display: false } } },
+    });
   } catch (e) {
     document.getElementById('cp-narrative').textContent = 'Could not load summary — is the server running?';
   }
