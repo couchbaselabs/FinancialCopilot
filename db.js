@@ -23,7 +23,7 @@ async function connect() {
   collections.transactions = bucket.defaultCollection();
   collections.portfolio = bucket.defaultCollection();
 
-  console.log('✅ Connected to Couchbase Capella');
+  console.log(`✅ Connected to Couchbase (${connectionString}, bucket "${bucketName}")`);
   return { cluster, bucket, scope, collections };
 }
 

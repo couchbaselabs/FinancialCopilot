@@ -45,7 +45,12 @@ async function seed() {
     console.log('Seeding transactions...');
     for (const t of transactions) {
       const id = `transaction::${uuidv4()}`;
-      await collection.upsert(id, { type: 'transaction', ...t, createdAt: new Date().toISOString() });
+      // NB: map t.type -> transactionType; spreading `...t` would overwrite the
+      // discriminator `type: 'transaction'` with 'BUY'/'SELL'.
+      await collection.upsert(id, {
+        type: 'transaction', ticker: t.ticker, transactionType: t.type,
+        shares: t.shares, price: t.price, date: t.date, createdAt: new Date().toISOString(),
+      });
       console.log(`  ✓ ${t.type} ${t.ticker}`);
     }
 

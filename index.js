@@ -199,10 +199,18 @@ async function buildCacheIndex() {
   return CACHE_INDEX;
 }
 
-// Is LM Studio reachable + models loaded?
+// Is LM Studio reachable + models loaded? (reports per-model load state)
 app.get('/api/copilot/llm/health', async (req, res) => {
-  const available = await llm.available();
-  ok(res, { available, embed_model: llm.config.EMBED_MODEL, chat_model: llm.config.CHAT_MODEL, base: llm.config.BASE });
+  const s = await llm.status();
+  ok(res, {
+    available: s.embed_loaded,
+    reachable: s.reachable,
+    embed_loaded: s.embed_loaded,
+    chat_loaded: s.chat_loaded,
+    embed_model: llm.config.EMBED_MODEL,
+    chat_model: llm.config.CHAT_MODEL,
+    base: llm.config.BASE,
+  });
 });
 
 // ─── Kevin · Task 1: Client lookup & summary ────────────────────────────────
@@ -251,6 +259,21 @@ app.get('/api/copilot/clients/:clientId/summary', async (req, res) => {
       top_position: top ? { symbol: top.symbol, market_value_usd: top.market_value_usd } : null,
       narrative,
     });
+  } catch (err) { console.error(err); fail(res, err); }
+});
+
+// ─── Client transactions (copilot-scoped) ───────────────────────────────────
+app.get('/api/copilot/clients/:clientId/transactions', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const rows = await query(
+      `SELECT t.txn_id, t.symbol, t.action, t.amount_usd, t.txn_date
+       FROM \`${BUCKET}\` AS t
+       WHERE t.type = 'transaction' AND t.client_id = $cid
+       ORDER BY t.txn_date DESC`,
+      { cid: clientId }
+    );
+    ok(res, { client_id: clientId, transactions: rows });
   } catch (err) { console.error(err); fail(res, err); }
 });
 
@@ -471,10 +494,12 @@ app.post('/api/copilot/ask', async (req, res) => {
 
     let clientCtx = '';
     if (clientId) {
-      const prof = await kvGet(`client::${clientId}`);
-      const mem = await kvGet(`client_memory::${clientId}`);
-      if (prof) clientCtx = `\nClient context — ${prof.name}, risk tolerance ${prof.risk_tolerance}, ESG preference ${prof.esg_preference}.` +
-        (mem && mem.key_facts && mem.key_facts.length ? ` Notes: ${mem.key_facts.join('; ')}.` : '');
+      try {
+        const prof = await kvGet(`client::${clientId}`);
+        const mem = await kvGet(`client_memory::${clientId}`);
+        if (prof) clientCtx = `\nClient context — ${prof.name}, risk tolerance ${prof.risk_tolerance}, ESG preference ${prof.esg_preference}.` +
+          (mem && mem.key_facts && mem.key_facts.length ? ` Notes: ${mem.key_facts.join('; ')}.` : '');
+      } catch (e) { console.error('client context fetch failed (non-fatal):', e.message); }
     }
 
     const prompt =
@@ -483,24 +508,36 @@ app.post('/api/copilot/ask', async (req, res) => {
       `answer briefly from general knowledge and suggest confirming with the advisor. Do not invent specific numbers.\n\n` +
       `Research context:\n${ctx || '(none)'}\n${clientCtx}\n\nQuestion: ${question}\n\nAnswer:`;
 
-    const answer = await llm.chat(prompt);
-
-    // Write-through: store the generated Q/A as a cache entry so repeats hit next time.
-    const newId = `gen_${Date.now()}`;
+    // Generate with Gemma; if the chat model isn't loaded, degrade to retrieval.
+    let answer, mode = 'generated', model = llm.config.CHAT_MODEL;
     try {
-      const { bucket } = await connect();
-      await bucket.defaultCollection().upsert(`semantic_cache_entry::${newId}`, {
-        type: 'semantic_cache_entry', cache_id: newId, canonical_query: question,
-        observed_variants: [], cached_response: answer, source: 'generated',
-        hit_count: 0, ttl_seconds: 86400, last_hit: new Date().toISOString(),
-      });
-      if (CACHE_INDEX) CACHE_INDEX.push({ cache_id: newId, canonical_query: question, cached_response: answer, vecs: [{ text: question, vec: qvec }] });
-    } catch (e) { console.error('cache store failed:', e.message); }
+      answer = await llm.chat(prompt);
+    } catch (e) {
+      console.error('gemma generation failed, falling back to retrieval:', e.message);
+      mode = 'retrieval'; model = null;
+      answer = top.length
+        ? `From "${top[0].n.title}": ${(top[0].n.body || '').slice(0, 300)}… (LLM generation unavailable — showing the most relevant research note.)`
+        : 'No cached answer and the LLM is unavailable — ask your advisor.';
+    }
+
+    // Write-through: cache a *generated* answer so repeats become hits (skip on retrieval fallback).
+    if (mode === 'generated') {
+      const newId = `gen_${Date.now()}`;
+      try {
+        const { bucket } = await connect();
+        await bucket.defaultCollection().upsert(`semantic_cache_entry::${newId}`, {
+          type: 'semantic_cache_entry', cache_id: newId, canonical_query: question,
+          observed_variants: [], cached_response: answer, source: 'generated',
+          hit_count: 0, ttl_seconds: 86400, last_hit: new Date().toISOString(),
+        });
+        if (CACHE_INDEX) CACHE_INDEX.push({ cache_id: newId, canonical_query: question, cached_response: answer, vecs: [{ text: question, vec: qvec }] });
+      } catch (e) { console.error('cache store failed:', e.message); }
+    }
 
     ok(res, {
-      question, cache_hit: false, mode: 'generated',
+      question, cache_hit: false, mode,
       matched_cache_id: null, match_score: +best.score.toFixed(3), matched_against: null,
-      answer, model: llm.config.CHAT_MODEL,
+      answer, model,
       sources: top.map(t => ({ note_id: t.n.note_id, title: t.n.title, score: +t.s.toFixed(3) })),
     });
   } catch (err) { console.error(err); fail(res, err); }

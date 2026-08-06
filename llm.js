@@ -51,18 +51,34 @@ async function chat(prompt, opts = {}) {
   return answer || (msg.reasoning_content || '').trim();
 }
 
-// Is LM Studio reachable? Short timeout so callers can fall back fast.
-async function available() {
+const ROOT = BASE.replace(/\/v1\/?$/, ''); // LM Studio native REST lives at /api/v0
+
+// Detailed status via LM Studio's native endpoint, which reports per-model
+// load state ("loaded" vs "not-loaded") — /v1/models lists *downloaded* models
+// even when none are loaded, so it can't tell us if inference will actually work.
+async function status() {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 2500);
   try {
-    const r = await fetch(BASE + '/models', { signal: ctrl.signal });
-    return r.ok;
+    const r = await fetch(ROOT + '/api/v0/models', { signal: ctrl.signal });
+    if (!r.ok) return { reachable: true, loaded: [], embed_loaded: false, chat_loaded: false };
+    const j = await r.json();
+    const loaded = (j.data || []).filter(m => m.state === 'loaded').map(m => m.id);
+    return {
+      reachable: true, loaded,
+      embed_loaded: loaded.includes(EMBED_MODEL),
+      chat_loaded: loaded.includes(CHAT_MODEL),
+    };
   } catch {
-    return false;
+    return { reachable: false, loaded: [], embed_loaded: false, chat_loaded: false };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Available for the embedding-backed paths (search + semantic cache).
+async function available() {
+  return (await status()).embed_loaded;
 }
 
 function cosine(a, b) {
@@ -73,4 +89,4 @@ function cosine(a, b) {
   return denom ? dot / denom : 0;
 }
 
-module.exports = { embed, chat, available, cosine, config: { BASE, EMBED_MODEL, CHAT_MODEL } };
+module.exports = { embed, chat, available, status, cosine, config: { BASE, EMBED_MODEL, CHAT_MODEL } };

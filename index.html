@@ -492,6 +492,11 @@
         <span id="db-status">Connecting…</span>
       </div>
       <div style="font-size:0.65rem;color:#2A3550;margin-top:4px;">Couchbase Capella</div>
+      <div class="db-badge" style="margin-top:12px">
+        <div class="db-dot" id="ai-dot" style="background:var(--slate)"></div>
+        <span id="ai-status">AI: checking…</span>
+      </div>
+      <div style="font-size:0.65rem;color:#2A3550;margin-top:4px;">LM Studio · Gemma</div>
     </div>
   </aside>
 
@@ -812,6 +817,22 @@
             </div>
             <div class="card-subtitle" id="cp-mem-updated" style="margin-top:8px"></div>
           </div>
+        </div>
+      </div>
+
+      <!-- Client transactions (copilot-scoped) -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Recent Transactions</div>
+            <div class="card-subtitle">This client's buys &amp; sells</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Symbol</th><th>Action</th><th>Amount</th></tr></thead>
+            <tbody id="cp-tx-tbody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+          </table>
         </div>
       </div>
 
@@ -1236,7 +1257,42 @@ async function fetchData(url, opts) {
 function currentClient() { return document.getElementById('cp-client').value; }
 
 async function loadCopilot() {
-  await Promise.all([loadClientSummary(), loadEsg(), loadMemory()]);
+  checkLLMHealth();
+  await Promise.all([loadClientSummary(), loadEsg(), loadMemory(), loadClientTransactions()]);
+}
+
+// Client transactions panel
+async function loadClientTransactions() {
+  const tbody = document.getElementById('cp-tx-tbody');
+  try {
+    const d = await fetchData(`${API}/copilot/clients/${currentClient()}/transactions`);
+    const txs = d.transactions || [];
+    if (!txs.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No transactions.</td></tr>'; return; }
+    tbody.innerHTML = txs.map(t => {
+      const buy = (t.action || '').toLowerCase() === 'buy';
+      return `<tr>
+        <td style="text-align:left">${t.txn_date ? fmtDate(t.txn_date) : ''}</td>
+        <td style="text-align:left" class="ticker">${t.symbol || ''}</td>
+        <td style="text-align:left"><span class="tx-badge ${buy ? 'buy' : 'sell'}" style="width:auto;padding:4px 10px;border-radius:6px">${(t.action || '').toUpperCase()}</span></td>
+        <td class="mono">${fmt(t.amount_usd)}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state" style="color:var(--red)">Could not load transactions.</td></tr>';
+  }
+}
+
+// LM Studio health badge
+async function checkLLMHealth() {
+  const dot = document.getElementById('ai-dot');
+  const txt = document.getElementById('ai-status');
+  try {
+    const h = await fetchData(`${API}/copilot/llm/health`);
+    if (h.embed_loaded && h.chat_loaded) { dot.style.background = 'var(--green)'; txt.textContent = 'AI: Gemma ready'; }
+    else if (h.embed_loaded) { dot.style.background = 'var(--gold)'; txt.textContent = 'AI: embeddings only'; }
+    else if (h.reachable) { dot.style.background = 'var(--gold)'; txt.textContent = 'AI: no model loaded'; }
+    else { dot.style.background = 'var(--red)'; txt.textContent = 'AI: offline (heuristics)'; }
+  } catch (e) { dot.style.background = 'var(--red)'; txt.textContent = 'AI: offline (heuristics)'; }
 }
 
 // Kevin · Task 1 — client summary header
@@ -1429,6 +1485,7 @@ document.getElementById('page-date').textContent = new Date().toLocaleDateString
 document.getElementById('tx-date').value = new Date().toISOString().split('T')[0];
 
 refreshData();
+checkLLMHealth();
 </script>
 </body>
 </html>
