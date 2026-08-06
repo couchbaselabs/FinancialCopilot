@@ -430,6 +430,19 @@
     }
     .answer-box.show { display: block; }
     .answer-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.75rem; color: var(--slate); }
+
+    /* ─── Research search (Vani · Task 2) ────────── */
+    .research-results { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+    .research-item { border: 1px solid var(--paper); border-radius: 10px; padding: 14px 16px; background: var(--white); }
+    .research-item-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .research-title { font-size: 0.92rem; font-weight: 600; color: var(--ink); }
+    .research-score { font-family: var(--font-mono); font-size: 0.72rem; color: var(--gold); flex-shrink: 0; }
+    .research-date { font-size: 0.72rem; color: var(--slate); margin-top: 2px; }
+    .research-snippet { font-size: 0.82rem; color: var(--slate); line-height: 1.5; margin-top: 8px; }
+    .research-snippet mark { background: rgba(201,168,76,0.25); color: var(--ink); border-radius: 3px; padding: 0 2px; }
+    .research-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .research-tag { font-size: 0.68rem; font-weight: 500; color: var(--slate); background: var(--paper); border-radius: 20px; padding: 3px 10px; }
+    .research-empty { font-size: 0.85rem; color: var(--slate); margin-top: 14px; }
     .esg-figure { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
 
     @media (max-width: 1024px) {
@@ -735,6 +748,23 @@
               <div class="stat-value" id="cp-top" style="font-size:1.3rem">—</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Research note search (Vani · Task 2) -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Research</div>
+            <div class="card-subtitle">Ask a question, get the most relevant research notes</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="inline-form">
+            <input type="text" id="rs-input" placeholder="e.g. what should I do about bond duration risk?" onkeydown="if(event.key==='Enter')searchResearch()" />
+            <button class="btn btn-primary" onclick="searchResearch()">Search</button>
+          </div>
+          <div id="rs-results" class="research-results"></div>
         </div>
       </div>
 
@@ -1301,6 +1331,50 @@ async function addFact() {
     input.value = '';
     await loadMemory();
   } catch (e) { alert('Failed to save note. Is the server running?'); }
+}
+
+// Vani · Task 2 — research note search
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function highlightSnippet(snippet, terms) {
+  let html = escapeHtml(snippet);
+  const uniq = [...new Set((terms || []).filter(Boolean))].sort((a, b) => b.length - a.length);
+  uniq.forEach(t => {
+    const re = new RegExp('(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+    html = html.replace(re, '<mark>$1</mark>');
+  });
+  return html;
+}
+
+async function searchResearch() {
+  const input = document.getElementById('rs-input');
+  const q = input.value.trim();
+  const box = document.getElementById('rs-results');
+  if (!q) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="research-empty">Searching…</div>';
+  try {
+    const d = await fetchData(`${API}/copilot/research/search?q=${encodeURIComponent(q)}&limit=5`);
+    const results = d.results || [];
+    if (!results.length) {
+      box.innerHTML = '<div class="research-empty">No matching research notes.</div>';
+      return;
+    }
+    box.innerHTML = results.map(r => `
+      <div class="research-item">
+        <div class="research-item-head">
+          <div class="research-title">${escapeHtml(r.title)}</div>
+          <div class="research-score">score ${r.score}</div>
+        </div>
+        <div class="research-date">${r.published_date ? fmtDate(r.published_date) : ''}</div>
+        <div class="research-snippet">${highlightSnippet(r.snippet, r.matched_terms)}</div>
+        <div class="research-tags">${(r.tags || []).map(t => `<span class="research-tag">${escapeHtml(t)}</span>`).join('')}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="research-empty" style="color:var(--red)">Could not load research results. Is the server running?</div>';
+  }
 }
 
 // Austin · Task 5 — repeat-question cache
