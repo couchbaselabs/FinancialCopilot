@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vertex · Portfolio Dashboard</title>
+  <title>FinBase · Portfolio Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
   <style>
@@ -449,7 +449,7 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-mark">Vertex<span>.</span></div>
+      <div class="logo-mark">FinBase<span>.</span></div>
       <div class="logo-sub">Portfolio Intelligence</div>
     </div>
     <nav class="sidebar-nav">
@@ -692,6 +692,12 @@
           <label>Client</label>
           <select id="cp-client" onchange="loadCopilot()">
             <option value="cli_10234">Priya Nandakumar · cli_10234</option>
+            <option value="cli_10300">Sofia Alvarez · cli_10300</option>
+            <option value="cli_10412">David Okafor · cli_10412</option>
+            <option value="cli_10533">Emily Chen · cli_10533</option>
+            <option value="cli_10644">Robert Kim · cli_10644</option>
+            <option value="cli_10755">Aisha Patel · cli_10755</option>
+            <option value="cli_10866">Thomas Wright · cli_10866</option>
             <option value="cli_10891">Marcus Webb · cli_10891</option>
           </select>
         </div>
@@ -889,8 +895,8 @@ const SECTOR_COLORS = [
 ];
 
 // ── Utilities ────────────────────────────────────────────────────────────────
-const fmt = v => new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', minimumFractionDigits:2 }).format(v);
-const fmtPct = v => (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+const fmt = v => (v == null || isNaN(v)) ? '—' : new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', minimumFractionDigits:2 }).format(v);
+const fmtPct = v => (v == null || isNaN(v)) ? '—' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
 const fmtDate = s => new Date(s).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 
 function glClass(v) { return v >= 0 ? 'up' : 'down'; }

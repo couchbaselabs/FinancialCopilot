@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { connect } = require('./db');
+const extras = require('./sample-extras');
 
 // ─── Task 1 (Kevin): Copilot seed ───────────────────────────────────────────
 // Loads financial_services_samples.json, normalizes `doc_type` -> `type`, and
@@ -46,7 +47,7 @@ async function seed() {
 
     let total = 0;
     for (const { arr, key } of LOADERS) {
-      const docs = sample[arr] || [];
+      const docs = [...(sample[arr] || []), ...(extras[arr] || [])];
       console.log(`Seeding ${arr} (${docs.length})...`);
       for (const raw of docs) {
         const doc = normalize(raw);

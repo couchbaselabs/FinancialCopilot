@@ -15,7 +15,7 @@ app.get('/api/portfolio/summary', async (req, res) => {
     const collection = bucket.defaultCollection();
 
     const rows = await query(
-      `SELECT * FROM \`${process.env.CB_BUCKET || 'portfolio'}\` WHERE type = 'holding'`
+      `SELECT * FROM \`${process.env.CB_BUCKET || 'portfolio'}\` WHERE type = 'holding' AND client_id IS MISSING`
     );
 
     let totalValue = 0, totalCost = 0;
@@ -57,7 +57,7 @@ app.get('/api/portfolio/summary', async (req, res) => {
 app.get('/api/holdings', async (req, res) => {
   try {
     const rows = await query(
-      `SELECT * FROM \`${process.env.CB_BUCKET || 'portfolio'}\` WHERE type = 'holding' ORDER BY ticker`
+      `SELECT * FROM \`${process.env.CB_BUCKET || 'portfolio'}\` WHERE type = 'holding' AND client_id IS MISSING ORDER BY ticker`
     );
 
     const holdings = rows.map(row => {
@@ -99,7 +99,7 @@ app.post('/api/holdings', async (req, res) => {
 app.get('/api/transactions', async (req, res) => {
   try {
     const rows = await query(
-      `SELECT * FROM \`${process.env.CB_BUCKET || 'portfolio'}\` WHERE type = 'transaction' ORDER BY date DESC LIMIT 50`
+      `SELECT * FROM \`${process.env.CB_BUCKET || 'portfolio'}\` WHERE type = 'transaction' AND client_id IS MISSING ORDER BY date DESC LIMIT 50`
     );
     const transactions = rows.map(r => r[process.env.CB_BUCKET || 'portfolio'] || r);
     res.json(transactions);

@@ -19,3 +19,8 @@ npm-debug.log*
 # Scratch
 scratch_*
 scratchpad_*
+
+# Test artifacts
+.playwright-mcp/
+dashboard*.png
+copilot.png
