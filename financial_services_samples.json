@@ -1,0 +1,118 @@
+{
+  "_notes": "Sample seed documents for Team 1 - Wealth Management Advisor Copilot. Embedding vectors are shortened to 8 dims for readability; use a real embedding model (768/1536+ dims) for production indexing.",
+
+  "client_profiles": [
+    {
+      "doc_type": "client_profile",
+      "client_id": "cli_10234",
+      "name": "Priya Nandakumar",
+      "advisor_id": "adv_502",
+      "risk_tolerance": "moderate",
+      "investable_assets_usd": 1875000,
+      "goals": ["retirement_2042", "college_funding_2030"],
+      "esg_preference": true,
+      "household": {"marital_status": "married", "dependents": 2},
+      "last_review_date": "2026-04-14"
+    },
+    {
+      "doc_type": "client_profile",
+      "client_id": "cli_10891",
+      "name": "Marcus Webb",
+      "advisor_id": "adv_502",
+      "risk_tolerance": "aggressive",
+      "investable_assets_usd": 640000,
+      "goals": ["early_retirement_2035", "second_home"],
+      "esg_preference": false,
+      "household": {"marital_status": "single", "dependents": 0},
+      "last_review_date": "2026-06-02"
+    }
+  ],
+
+  "client_memory": [
+    {
+      "doc_type": "client_memory",
+      "client_id": "cli_10234",
+      "memory_summary": "Priya is focused on funding two kids' college in 2030 and 2033; prefers ESG-screened funds; expressed concern in March about bond volatility and asked to reduce duration risk. Wants quarterly check-ins instead of annual.",
+      "key_facts": [
+        "Prefers ESG/sustainable funds",
+        "Reduced bond duration exposure March 2026",
+        "Requested quarterly cadence"
+      ],
+      "last_updated": "2026-06-20T14:12:00Z",
+      "source_meetings": ["mtg_2026_03_11", "mtg_2026_06_20"]
+    },
+    {
+      "doc_type": "client_memory",
+      "client_id": "cli_10891",
+      "memory_summary": "Marcus is comfortable with volatility, actively asks about tech and crypto-adjacent equities, targeting early retirement at 52. Flagged interest in a second home purchase in 2028 that may require a liquidity event.",
+      "key_facts": [
+        "High risk tolerance, tech-heavy preference",
+        "Targeting early retirement at age 52",
+        "Planning liquidity event ~2028 for second home"
+      ],
+      "last_updated": "2026-07-01T09:45:00Z",
+      "source_meetings": ["mtg_2026_07_01"]
+    }
+  ],
+
+  "holdings": [
+    {"doc_type": "holding", "client_id": "cli_10234", "symbol": "VTSAX", "asset_class": "equity", "quantity": 1200, "market_value_usd": 145000, "esg_screened": true, "as_of": "2026-07-27"},
+    {"doc_type": "holding", "client_id": "cli_10234", "symbol": "ESGV", "asset_class": "equity", "quantity": 800, "market_value_usd": 62000, "esg_screened": true, "as_of": "2026-07-27"},
+    {"doc_type": "holding", "client_id": "cli_10234", "symbol": "BND", "asset_class": "fixed_income", "quantity": 500, "market_value_usd": 38500, "esg_screened": false, "as_of": "2026-07-27"},
+    {"doc_type": "holding", "client_id": "cli_10891", "symbol": "QQQ", "asset_class": "equity", "quantity": 300, "market_value_usd": 128000, "esg_screened": false, "as_of": "2026-07-27"},
+    {"doc_type": "holding", "client_id": "cli_10891", "symbol": "ARKK", "asset_class": "equity", "quantity": 900, "market_value_usd": 41000, "esg_screened": false, "as_of": "2026-07-27"}
+  ],
+
+  "transactions": [
+    {"doc_type": "transaction", "client_id": "cli_10234", "txn_id": "txn_88213", "symbol": "BND", "action": "sell", "amount_usd": 55000, "txn_date": "2026-03-15"},
+    {"doc_type": "transaction", "client_id": "cli_10891", "txn_id": "txn_88544", "symbol": "QQQ", "action": "buy", "amount_usd": 60000, "txn_date": "2026-05-02"}
+  ],
+
+  "research_notes": [
+    {
+      "doc_type": "research_note",
+      "note_id": "note_5521",
+      "title": "Q3 2026 Fixed Income Outlook: Managing Duration Risk in a Higher-for-Longer Environment",
+      "body": "With the Fed signaling a slower pace of cuts through year-end, we recommend trimming long-duration bond exposure in favor of short-to-intermediate maturities and floating-rate instruments to reduce sensitivity to rate volatility...",
+      "tags": ["fixed_income", "duration_risk", "rates"],
+      "published_date": "2026-07-10",
+      "embedding": [0.12, -0.44, 0.08, 0.31, -0.02, 0.19, -0.27, 0.05]
+    },
+    {
+      "doc_type": "research_note",
+      "note_id": "note_5602",
+      "title": "ESG Fund Screening Update: New Exclusions for Q3",
+      "body": "Our ESG research team has updated exclusion criteria for the sustainable equity sleeve, removing two holdings tied to expanded fossil fuel operations and adding three renewable infrastructure names...",
+      "tags": ["esg", "equity", "screening"],
+      "published_date": "2026-07-05",
+      "embedding": [-0.08, 0.22, 0.41, -0.15, 0.33, -0.09, 0.04, 0.26]
+    },
+    {
+      "doc_type": "research_note",
+      "note_id": "note_5580",
+      "title": "Tech Sector Concentration Risk Ahead of Q3 Earnings",
+      "body": "Mega-cap tech now represents an outsized share of major indices. We advise clients with aggressive growth mandates to review single-sector concentration ahead of earnings season volatility...",
+      "tags": ["equity", "tech", "concentration_risk"],
+      "published_date": "2026-07-18",
+      "embedding": [0.36, 0.11, -0.29, 0.07, -0.18, 0.42, 0.15, -0.06]
+    }
+  ],
+
+  "semantic_cache_entries": [
+    {
+      "doc_type": "semantic_cache_entry",
+      "cache_id": "cache_fin_001",
+      "canonical_query": "How is inflation affecting my bond holdings?",
+      "observed_variants": [
+        "what does inflation mean for my bonds",
+        "should I be worried about inflation and my fixed income",
+        "is inflation hurting my bond portfolio"
+      ],
+      "query_embedding": [0.14, -0.40, 0.10, 0.29, -0.05, 0.21, -0.25, 0.03],
+      "cached_response": "Based on our Q3 fixed income outlook, higher-for-longer rates are pressuring long-duration bonds more than short-term instruments. We recommend reviewing duration exposure with your advisor.",
+      "hit_count": 14,
+      "ttl_seconds": 86400,
+      "last_hit": "2026-07-27T16:02:00Z"
+    }
+  ]
+}
