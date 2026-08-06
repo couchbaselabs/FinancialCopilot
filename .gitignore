@@ -24,3 +24,6 @@ scratchpad_*
 .playwright-mcp/
 dashboard*.png
 copilot.png
+
+# Patch files (apply via git am, do not commit)
+*.patch

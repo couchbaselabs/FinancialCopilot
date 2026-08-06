@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "serve": "python3 -m http.server 3000",
+    "dev": "concurrently -n api,web -c blue,green \"node index.js\" \"npm run serve\"",
     "seed": "node seed.js",
-    "seed:copilot": "node seed-copilot.js"
+    "seed:copilot": "node seed-copilot.js",
+    "seed:trading": "node seed-trading.js"
   },
   "dependencies": {
     "couchbase": "^4.4.1",
@@ -14,5 +17,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

@@ -414,6 +414,8 @@
     .badge.na           { background: var(--paper);          color: var(--slate); }
     .badge.hit          { background: rgba(34,197,94,0.14);  color: #15803D; }
     .badge.miss         { background: rgba(239,68,68,0.12);  color: #B91C1C; }
+    .badge.gen          { background: rgba(79,124,247,0.14); color: #3B5BDB; }
+    #cp-ask-text        { white-space: pre-wrap; }
     .fact-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 4px 0 16px; }
     .fact-list li {
       display: flex; align-items: flex-start; gap: 8px;
@@ -1384,18 +1386,42 @@ async function askCopilot() {
   if (!question) return;
   const box = document.getElementById('cp-answer');
   const badge = document.getElementById('cp-ask-badge');
+  badge.className = 'badge na';
+  badge.textContent = 'Thinking…';
+  document.getElementById('cp-ask-score').textContent = '';
+  document.getElementById('cp-ask-text').textContent = '';
+  box.classList.add('show');
   try {
     const d = await fetchData(`${API}/copilot/ask`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, client_id: currentClient() })
     });
-    badge.className = 'badge ' + (d.cache_hit ? 'hit' : 'miss');
-    badge.textContent = d.cache_hit ? '⚡ Cache HIT' : '○ Cache MISS';
-    document.getElementById('cp-ask-score').textContent =
-      'score ' + d.match_score + (d.matched_cache_id ? ' · ' + d.matched_cache_id : '');
-    document.getElementById('cp-ask-text').textContent = d.answer;
-    box.classList.add('show');
-  } catch (e) { alert('Ask failed. Is the server running?'); }
+    // mode: cache (embedding hit) | generated (Gemma) | heuristic (Jaccard fallback)
+    if (d.cache_hit) {
+      badge.className = 'badge hit';
+      badge.textContent = '⚡ Cache HIT';
+    } else if (d.mode === 'generated') {
+      badge.className = 'badge gen';
+      badge.textContent = '✨ Generated';
+    } else {
+      badge.className = 'badge miss';
+      badge.textContent = '○ Cache MISS';
+    }
+    const meta = [];
+    if (typeof d.match_score === 'number') meta.push('score ' + d.match_score);
+    if (d.matched_cache_id) meta.push(d.matched_cache_id);
+    if (d.model) meta.push(d.model);
+    document.getElementById('cp-ask-score').textContent = meta.join(' · ');
+    let text = d.answer || '';
+    if (d.sources && d.sources.length) {
+      text += '\n\nSources: ' + d.sources.map(s => s.title).join('; ');
+    }
+    document.getElementById('cp-ask-text').textContent = text;
+  } catch (e) {
+    badge.className = 'badge miss';
+    badge.textContent = 'Error';
+    document.getElementById('cp-ask-text').textContent = 'Ask failed — is the server (and LM Studio) running?';
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

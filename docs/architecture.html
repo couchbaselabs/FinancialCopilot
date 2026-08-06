@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FinBase · Architecture</title>
+<style>
+  :root {
+    --ink:#0E1117; --ink-2:#1C2333; --ink-3:#2A3550; --slate:#8892A4;
+    --mist:#C8D0DE; --paper:#F0F3F8; --white:#FFF; --gold:#C9A84C;
+    --green:#22C55E; --blue:#4F7CF7; --purple:#A78BFA;
+    --font-display:'DM Serif Display',Georgia,serif;
+    --font-body:'Inter',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font-body);background:var(--paper);color:var(--ink);line-height:1.55;padding:40px 20px;}
+  .wrap{max-width:960px;margin:0 auto;}
+  h1{font-family:var(--font-display);font-size:2.2rem;letter-spacing:-.02em;}
+  h1 span{color:var(--gold);}
+  .sub{color:var(--slate);margin:4px 0 8px;font-size:.95rem;}
+  h2{font-family:var(--font-display);font-size:1.4rem;margin:36px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--mist);}
+  h3{font-size:.95rem;text-transform:uppercase;letter-spacing:.08em;color:var(--slate);margin:20px 0 8px;}
+  p{margin:8px 0;} code{font-family:var(--font-mono);font-size:.85em;background:#fff;border:1px solid var(--mist);border-radius:4px;padding:1px 5px;}
+  .card{background:#fff;border:1px solid var(--mist);border-radius:12px;padding:20px 22px;box-shadow:0 2px 12px rgba(14,17,23,.06);margin:14px 0;}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;margin:10px 0;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--paper);vertical-align:top;}
+  th{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--slate);}
+  td code{white-space:nowrap;}
+  .tag{display:inline-block;font-size:.7rem;font-weight:600;border-radius:20px;padding:2px 10px;}
+  .tag.copilot{background:rgba(201,168,76,.15);color:#8a6d1f;}
+  .tag.trading{background:rgba(79,124,247,.14);color:#3b5bdb;}
+  .tag.legacy{background:var(--paper);color:var(--slate);}
+
+  /* diagram */
+  .diagram{display:flex;flex-direction:column;gap:0;align-items:center;padding:8px 0;}
+  .row{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;width:100%;}
+  .node{border-radius:12px;padding:14px 18px;min-width:190px;text-align:center;border:1.5px solid;}
+  .node .t{font-weight:600;font-size:.92rem;} .node .d{font-size:.74rem;color:var(--slate);margin-top:3px;}
+  .node .p{font-family:var(--font-mono);font-size:.68rem;color:var(--slate);margin-top:4px;}
+  .n-web{background:#fff;border-color:var(--gold);}
+  .n-api{background:#fff;border-color:var(--blue);}
+  .n-db{background:#fff;border-color:var(--green);}
+  .n-llm{background:#fff;border-color:var(--purple);}
+  .arrow{color:var(--slate);font-size:1.4rem;line-height:1;padding:6px 0;}
+  .arrow small{display:block;font-size:.66rem;font-family:var(--font-mono);}
+  .legend{font-size:.75rem;color:var(--slate);margin-top:6px;}
+  ol,ul{margin:8px 0 8px 22px;} li{margin:4px 0;font-size:.9rem;}
+  .flow{counter-reset:step;list-style:none;margin-left:0;}
+  .flow li{position:relative;padding-left:34px;margin:10px 0;}
+  .flow li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:0;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;font-size:.72rem;font-weight:600;display:flex;align-items:center;justify-content:center;}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--mist);font-size:.78rem;color:var(--slate);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>FinBase<span>.</span> — Architecture</h1>
+  <div class="sub">Wealth Management Advisor Copilot · Couchbase Capella + local LM Studio (BERT embeddings + Gemma)</div>
+
+  <h2>System overview</h2>
+  <p>FinBase is a three-tier app with a local inference sidecar. A static single-page frontend calls an
+  Express API, which reads/writes a single Couchbase Capella bucket and calls LM Studio for embeddings
+  and generation. Every AI feature degrades gracefully to a heuristic when LM Studio is unavailable.</p>
+
+  <div class="card">
+    <div class="diagram">
+      <div class="row">
+        <div class="node n-web"><div class="t">Frontend SPA</div><div class="d">Vanilla JS + Chart.js, no build</div><div class="p">index.html · :3000</div></div>
+      </div>
+      <div class="arrow">↓ <small>fetch /api/* (JSON)</small></div>
+      <div class="row">
+        <div class="node n-api"><div class="t">Express API</div><div class="d">Copilot + trading + legacy routes</div><div class="p">index.js · :3001</div></div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="row">
+        <div class="node n-db"><div class="t">Couchbase Capella</div><div class="d">1 bucket, type-discriminated docs</div><div class="p">db.js · SQL++ / KV</div></div>
+        <div class="node n-llm"><div class="t">LM Studio</div><div class="d">bge-m3 embeddings · gemma-4-e4b</div><div class="p">llm.js · :1234/v1</div></div>
+      </div>
+    </div>
+    <div class="legend">The API is the only component that talks to Couchbase and LM Studio; the frontend never calls them directly.</div>
+  </div>
+
+  <h2>Components</h2>
+  <table>
+    <tr><th>Layer</th><th>File(s)</th><th>Responsibility</th></tr>
+    <tr><td>Frontend</td><td><code>index.html</code></td><td>Dashboard + Copilot view; renders summary, ESG donut, memory, research, ask bar. Unwraps the <code>{ data, error }</code> envelope.</td></tr>
+    <tr><td>API</td><td><code>index.js</code></td><td>Express routes. Copilot business logic, retrieval orchestration, graceful fallbacks.</td></tr>
+    <tr><td>DB client</td><td><code>db.js</code></td><td>Couchbase SDK connect + <code>query()</code> (SQL++/N1QL) + KV get/upsert.</td></tr>
+    <tr><td>LLM client</td><td><code>llm.js</code></td><td>LM Studio OpenAI-compatible client: <code>embed()</code>, <code>chat()</code>, <code>cosine()</code>, <code>available()</code>.</td></tr>
+    <tr><td>Seeds</td><td><code>seed-copilot.js</code>, <code>sample-extras.js</code>, <code>seed.js</code>, <code>seed-trading.js</code></td><td>Load the wealth-management, legacy, and trading datasets.</td></tr>
+  </table>
+
+  <h2>Data model</h2>
+  <p>One Capella bucket (<code>portfolio</code>), documents discriminated by a <code>type</code> field and keyed by convention. Copilot holdings carry a <code>client_id</code>; legacy holdings do not, which keeps the two datasets isolated in the same bucket.</p>
+  <table>
+    <tr><th>Type</th><th>Key</th><th>Set</th></tr>
+    <tr><td><code>client_profile</code></td><td><code>client::&lt;id&gt;</code></td><td><span class="tag copilot">copilot</span></td></tr>
+    <tr><td><code>holding</code></td><td><code>holding::&lt;client_id&gt;::&lt;symbol&gt;</code></td><td><span class="tag copilot">copilot</span></td></tr>
+    <tr><td><code>client_memory</code></td><td><code>client_memory::&lt;id&gt;</code></td><td><span class="tag copilot">copilot</span></td></tr>
+    <tr><td><code>research_note</code></td><td><code>research_note::&lt;id&gt;</code></td><td><span class="tag copilot">copilot</span></td></tr>
+    <tr><td><code>semantic_cache_entry</code></td><td><code>semantic_cache_entry::&lt;id&gt;</code></td><td><span class="tag copilot">copilot</span></td></tr>
+    <tr><td><code>trade / position / fund</code></td><td><code>TRD-* / POS-* / FUND-*</code></td><td><span class="tag trading">trading</span></td></tr>
+    <tr><td><code>holding / transaction</code> (no client_id)</td><td><code>holding::&lt;TICKER&gt;</code></td><td><span class="tag legacy">legacy dashboard</span></td></tr>
+  </table>
+
+  <h2>The five copilot features</h2>
+  <table>
+    <tr><th>#</th><th>Feature</th><th>Endpoint</th><th>Backing</th></tr>
+    <tr><td>1</td><td>Client summary</td><td><code>GET /api/copilot/clients/:id/summary</code></td><td>SQL++ over client-scoped holdings</td></tr>
+    <tr><td>2</td><td>Research search</td><td><code>GET /api/copilot/research/search</code></td><td><b>BERT embeddings</b> (cosine); keyword fallback</td></tr>
+    <tr><td>3</td><td>Client memory</td><td><code>GET/PATCH /api/copilot/clients/:id/memory</code></td><td>KV get/upsert</td></tr>
+    <tr><td>4</td><td>ESG calculator</td><td><code>GET /api/copilot/clients/:id/esg</code></td><td>SQL++ aggregate + alignment rule</td></tr>
+    <tr><td>5</td><td>Ask / repeat-cache</td><td><code>POST /api/copilot/ask</code></td><td><b>Embeddings cache → Gemma RAG</b>; Jaccard fallback</td></tr>
+  </table>
+
+  <h2>Ask flow (cache → retrieval → generation)</h2>
+  <div class="card">
+    <ol class="flow">
+      <li>Embed the question with <code>bge-m3</code> (BERT).</li>
+      <li>Cosine-compare against cached question embeddings. If <code>max ≥ 0.75</code> → <b>cache HIT</b>: return the cached answer, bump <code>hit_count</code>, record the new phrasing.</li>
+      <li>On a miss, retrieve the top-3 research notes by embedding similarity, add optional client context (profile + memory facts).</li>
+      <li>Prompt <code>gemma-4-e4b</code> to answer in 2–4 sentences, grounded in that context.</li>
+      <li>Write-through: store the generated Q/A as a new <code>semantic_cache_entry</code> so future repeats become cache hits.</li>
+    </ol>
+    <div class="legend">If LM Studio is unreachable, steps 1–5 fall back to Jaccard token-overlap matching and a canned "ask your advisor" response — the app never hard-fails.</div>
+  </div>
+
+  <h2>Run</h2>
+  <p><code>npm run dev</code> starts the API (:3001) and static frontend (:3000) together. Data: <code>npm run seed:copilot</code>. Inference: load <code>text-embedding-bge-m3-embeddings</code> and <code>google/gemma-4-e4b</code> in LM Studio (<code>lms load …</code>), listening on :1234.</p>
+
+  <footer>FinBase · Vertex scaffold · generated architecture reference. Endpoints and conventions per <code>docs/team-plans/integration-contract.md</code>.</footer>
+</div>
+</body>
+</html>

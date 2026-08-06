@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { connect, query } = require('./db');
+const llm = require('./llm');
 
 const app = express();
 app.use(cors());
@@ -160,6 +161,50 @@ async function kvGet(id) {
   }
 }
 
+// ─── LM Studio: BERT embeddings + Gemma inference ───────────────────────────
+// Real embeddings power semantic research search and semantic cache matching;
+// Gemma answers on a cache miss, grounded in retrieved research notes. All of
+// this degrades gracefully to keyword/Jaccard heuristics when LM Studio is down.
+const SEM_THRESHOLD = parseFloat(process.env.COPILOT_SEMANTIC_THRESHOLD) || 0.75;
+
+let NOTE_INDEX = null;   // [{ note_id, title, body, tags, published_date, vec }]
+let CACHE_INDEX = null;  // [{ cache_id, canonical_query, cached_response, vecs:[{text,vec}] }]
+
+async function buildNoteIndex() {
+  if (NOTE_INDEX) return NOTE_INDEX;
+  const notes = await query(
+    `SELECT r.note_id, r.title, r.body, r.tags, r.published_date
+     FROM \`${BUCKET}\` AS r WHERE r.type = 'research_note'`
+  );
+  const vecs = await llm.embed(notes.map(n => `${n.title}. ${(n.body || '').slice(0, 1200)}`));
+  NOTE_INDEX = notes.map((n, i) => ({ ...n, vec: vecs[i] }));
+  return NOTE_INDEX;
+}
+
+async function buildCacheIndex() {
+  if (CACHE_INDEX) return CACHE_INDEX;
+  const entries = await query(
+    `SELECT c.cache_id, c.canonical_query, c.observed_variants, c.cached_response
+     FROM \`${BUCKET}\` AS c WHERE c.type = 'semantic_cache_entry'`
+  );
+  CACHE_INDEX = [];
+  for (const e of entries) {
+    const texts = [e.canonical_query, ...(e.observed_variants || [])].filter(Boolean);
+    const vecs = await llm.embed(texts);
+    CACHE_INDEX.push({
+      cache_id: e.cache_id, canonical_query: e.canonical_query, cached_response: e.cached_response,
+      vecs: texts.map((t, i) => ({ text: t, vec: vecs[i] })),
+    });
+  }
+  return CACHE_INDEX;
+}
+
+// Is LM Studio reachable + models loaded?
+app.get('/api/copilot/llm/health', async (req, res) => {
+  const available = await llm.available();
+  ok(res, { available, embed_model: llm.config.EMBED_MODEL, chat_model: llm.config.CHAT_MODEL, base: llm.config.BASE });
+});
+
 // ─── Kevin · Task 1: Client lookup & summary ────────────────────────────────
 app.get('/api/copilot/clients/:clientId/summary', async (req, res) => {
   try {
@@ -213,18 +258,41 @@ app.get('/api/copilot/clients/:clientId/summary', async (req, res) => {
 const STOPWORDS = new Set(['the','a','an','my','is','are','to','of','for','and','or','in','on','what','how','should','i','be','about','with','do','does','me']);
 const SYNONYMS = { bond: 'fixed_income', bonds: 'fixed_income', stock: 'equity', stocks: 'equity', sustainable: 'esg', green: 'esg', duration: 'duration_risk', tech: 'tech' };
 
+// Build a snippet + matched terms for highlighting (shared by both paths).
+function snippetFor(q, note) {
+  const body = note.body || '';
+  const low = body.toLowerCase();
+  const qTerms = q.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 2 && !STOPWORDS.has(t));
+  let snippet = body.slice(0, 180);
+  const hit = qTerms.find(t => low.includes(t));
+  if (hit) { const idx = low.indexOf(hit); snippet = body.slice(Math.max(0, idx - 50), idx + 140).trim(); }
+  const matched = qTerms.filter(t => low.includes(t) || (note.title || '').toLowerCase().includes(t));
+  return { snippet: snippet + '...', matched_terms: [...new Set(matched)] };
+}
+
 app.get('/api/copilot/research/search', async (req, res) => {
   try {
     const q = (req.query.q || '').toString();
     const limit = Math.max(1, Math.min(20, parseInt(req.query.limit, 10) || 5));
+    if (!q.trim()) return ok(res, { query: q, results: [], mode: 'none' });
+
+    // ── Semantic path (BERT embeddings) ──
+    if (await llm.available()) {
+      const [qvec, index] = await Promise.all([llm.embed(q), buildNoteIndex()]);
+      const scored = index.map(n => {
+        const { snippet, matched_terms } = snippetFor(q, n);
+        return { note_id: n.note_id, title: n.title, score: +llm.cosine(qvec, n.vec).toFixed(3), matched_terms, snippet, tags: n.tags, published_date: n.published_date };
+      }).sort((a, b) => b.score - a.score).slice(0, limit);
+      return ok(res, { query: q, results: scored, mode: 'semantic' });
+    }
+
+    // ── Keyword fallback (LM Studio unavailable) ──
     const tokens = q.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t && !STOPWORDS.has(t));
     const terms = [...new Set(tokens.flatMap(t => SYNONYMS[t] ? [t, SYNONYMS[t]] : [t]))];
-
     const notes = await query(
       `SELECT r.note_id, r.title, r.body, r.tags, r.published_date
        FROM \`${BUCKET}\` AS r WHERE r.type = 'research_note'`
     );
-
     const scored = notes.map(n => {
       const title = (n.title || '').toLowerCase();
       const body = (n.body || '').toLowerCase();
@@ -236,18 +304,14 @@ app.get('/api/copilot/research/search', async (req, res) => {
         else if (title.includes(t)) { raw += 2; matched.push(t); }
         else if (body.includes(t)) { raw += 1; matched.push(t); }
       });
-      const maxPossible = terms.length * 3 || 1;
-      const score = +(raw / maxPossible).toFixed(2);
+      const score = +(raw / (terms.length * 3 || 1)).toFixed(2);
       let snippet = (n.body || '').slice(0, 160);
       const firstTerm = matched.find(t => body.includes(t));
-      if (firstTerm) {
-        const idx = body.indexOf(firstTerm);
-        snippet = (n.body || '').slice(Math.max(0, idx - 40), idx + 120).trim();
-      }
+      if (firstTerm) { const idx = body.indexOf(firstTerm); snippet = (n.body || '').slice(Math.max(0, idx - 40), idx + 120).trim(); }
       return { note_id: n.note_id, title: n.title, score, matched_terms: [...new Set(matched)], snippet: snippet + '...', tags: n.tags, published_date: n.published_date, _raw: raw };
     }).filter(n => n._raw > 0).sort((a, b) => b._raw - a._raw).slice(0, limit).map(({ _raw, ...n }) => n);
 
-    ok(res, { query: q, results: scored });
+    ok(res, { query: q, results: scored, mode: 'keyword' });
   } catch (err) { console.error(err); fail(res, err); }
 });
 
@@ -317,7 +381,7 @@ app.get('/api/copilot/clients/:clientId/esg', async (req, res) => {
   } catch (err) { console.error(err); fail(res, err); }
 });
 
-// ─── Austin · Task 5: Repeat-question cache demo ────────────────────────────
+// ─── Austin · Task 5: Repeat-question cache (embeddings) + Gemma inference ───
 const CACHE_THRESHOLD = parseFloat(process.env.COPILOT_CACHE_SIMILARITY_THRESHOLD) || 0.82;
 
 function tokenSet(s) {
@@ -330,51 +394,114 @@ function jaccard(a, b) {
   return inter / (A.size + B.size - inter);
 }
 
+// Bump hit_count / record a new phrasing on a cache hit.
+async function cacheWriteThrough(cacheId, question) {
+  try {
+    const { bucket } = await connect();
+    const id = `semantic_cache_entry::${cacheId}`;
+    const doc = await kvGet(id);
+    if (!doc) return;
+    doc.hit_count = (doc.hit_count || 0) + 1;
+    doc.last_hit = new Date().toISOString();
+    doc.observed_variants = doc.observed_variants || [];
+    if (!doc.observed_variants.includes(question) && question.toLowerCase() !== (doc.canonical_query || '').toLowerCase()) {
+      doc.observed_variants.push(question);
+    }
+    await bucket.defaultCollection().upsert(id, doc);
+  } catch (e) { console.error('cache write-through failed:', e.message); }
+}
+
+// Jaccard fallback when LM Studio is unavailable.
+async function askHeuristic(res, question) {
+  const entries = await query(
+    `SELECT c.cache_id, c.canonical_query, c.observed_variants, c.cached_response
+     FROM \`${BUCKET}\` AS c WHERE c.type = 'semantic_cache_entry'`
+  );
+  let best = { score: 0, entry: null, against: null };
+  entries.forEach(e => {
+    [e.canonical_query, ...(e.observed_variants || [])].forEach(candidate => {
+      const s = jaccard(question, candidate);
+      if (s > best.score) best = { score: s, entry: e, against: candidate };
+    });
+  });
+  const hit = best.entry && best.score >= CACHE_THRESHOLD;
+  if (hit) await cacheWriteThrough(best.entry.cache_id, question);
+  return ok(res, {
+    question, cache_hit: !!hit, mode: 'heuristic',
+    matched_cache_id: hit ? best.entry.cache_id : null,
+    match_score: +best.score.toFixed(2),
+    matched_against: hit ? best.against : null,
+    answer: hit ? best.entry.cached_response : 'No cached answer for this question yet — ask your advisor, or try the research search.',
+    model: null, sources: [],
+  });
+}
+
 app.post('/api/copilot/ask', async (req, res) => {
   try {
     const question = (req.body && req.body.question || '').toString();
     if (!question.trim()) return fail(res, new Error('question is required'), 400);
+    const clientId = req.body && req.body.client_id;
 
-    const entries = await query(
-      `SELECT c.cache_id, c.canonical_query, c.observed_variants, c.cached_response
-       FROM \`${BUCKET}\` AS c WHERE c.type = 'semantic_cache_entry'`
-    );
+    if (!(await llm.available())) return askHeuristic(res, question);
 
+    const qvec = await llm.embed(question);
+
+    // 1) Semantic cache match (cosine over canonical + observed variants).
+    const cacheIdx = await buildCacheIndex();
     let best = { score: 0, entry: null, against: null };
-    entries.forEach(e => {
-      [e.canonical_query, ...(e.observed_variants || [])].forEach(candidate => {
-        const s = jaccard(question, candidate);
-        if (s > best.score) best = { score: s, entry: e, against: candidate };
+    for (const e of cacheIdx) {
+      for (const v of e.vecs) {
+        const s = llm.cosine(qvec, v.vec);
+        if (s > best.score) best = { score: s, entry: e, against: v.text };
+      }
+    }
+    if (best.entry && best.score >= SEM_THRESHOLD) {
+      await cacheWriteThrough(best.entry.cache_id, question);
+      return ok(res, {
+        question, cache_hit: true, mode: 'cache',
+        matched_cache_id: best.entry.cache_id, match_score: +best.score.toFixed(3),
+        matched_against: best.against, answer: best.entry.cached_response, model: null, sources: [],
       });
-    });
-
-    const hit = best.entry && best.score >= CACHE_THRESHOLD;
-    if (hit) {
-      // Write-through: bump hit_count, record variant, refresh last_hit.
-      try {
-        const { bucket } = await connect();
-        const collection = bucket.defaultCollection();
-        const id = `semantic_cache_entry::${best.entry.cache_id}`;
-        const doc = await kvGet(id);
-        if (doc) {
-          doc.hit_count = (doc.hit_count || 0) + 1;
-          doc.last_hit = new Date().toISOString();
-          doc.observed_variants = doc.observed_variants || [];
-          if (!doc.observed_variants.includes(question) && question.toLowerCase() !== (doc.canonical_query || '').toLowerCase()) {
-            doc.observed_variants.push(question);
-          }
-          await collection.upsert(id, doc);
-        }
-      } catch (e) { console.error('cache write-through failed:', e.message); }
     }
 
+    // 2) Miss → retrieve top research notes and let Gemma answer, grounded.
+    const notes = await buildNoteIndex();
+    const top = notes.map(n => ({ n, s: llm.cosine(qvec, n.vec) })).sort((a, b) => b.s - a.s).slice(0, 3);
+    const ctx = top.map((t, i) => `[${i + 1}] ${t.n.title}: ${(t.n.body || '').slice(0, 400)}`).join('\n');
+
+    let clientCtx = '';
+    if (clientId) {
+      const prof = await kvGet(`client::${clientId}`);
+      const mem = await kvGet(`client_memory::${clientId}`);
+      if (prof) clientCtx = `\nClient context — ${prof.name}, risk tolerance ${prof.risk_tolerance}, ESG preference ${prof.esg_preference}.` +
+        (mem && mem.key_facts && mem.key_facts.length ? ` Notes: ${mem.key_facts.join('; ')}.` : '');
+    }
+
+    const prompt =
+      `You are FinBase, a wealth management advisor copilot. Answer the advisor's question in 2-4 sentences, ` +
+      `grounded in the research context when relevant. Be accurate and conservative; if the context doesn't cover it, ` +
+      `answer briefly from general knowledge and suggest confirming with the advisor. Do not invent specific numbers.\n\n` +
+      `Research context:\n${ctx || '(none)'}\n${clientCtx}\n\nQuestion: ${question}\n\nAnswer:`;
+
+    const answer = await llm.chat(prompt);
+
+    // Write-through: store the generated Q/A as a cache entry so repeats hit next time.
+    const newId = `gen_${Date.now()}`;
+    try {
+      const { bucket } = await connect();
+      await bucket.defaultCollection().upsert(`semantic_cache_entry::${newId}`, {
+        type: 'semantic_cache_entry', cache_id: newId, canonical_query: question,
+        observed_variants: [], cached_response: answer, source: 'generated',
+        hit_count: 0, ttl_seconds: 86400, last_hit: new Date().toISOString(),
+      });
+      if (CACHE_INDEX) CACHE_INDEX.push({ cache_id: newId, canonical_query: question, cached_response: answer, vecs: [{ text: question, vec: qvec }] });
+    } catch (e) { console.error('cache store failed:', e.message); }
+
     ok(res, {
-      question,
-      cache_hit: !!hit,
-      matched_cache_id: hit ? best.entry.cache_id : null,
-      match_score: +best.score.toFixed(2),
-      matched_against: hit ? best.against : null,
-      answer: hit ? best.entry.cached_response : 'No cached answer for this question yet — ask your advisor, or try the research search.',
+      question, cache_hit: false, mode: 'generated',
+      matched_cache_id: null, match_score: +best.score.toFixed(3), matched_against: null,
+      answer, model: llm.config.CHAT_MODEL,
+      sources: top.map(t => ({ note_id: t.n.note_id, title: t.n.title, score: +t.s.toFixed(3) })),
     });
   } catch (err) { console.error(err); fail(res, err); }
 });
