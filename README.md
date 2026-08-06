@@ -38,20 +38,31 @@ CB_BUCKET=portfolio
 PORT=3001
 ```
 
-### 3. Install & Run
+### 3. Install & Seed
 
 ```bash
 npm install          # install dependencies
-npm run seed         # populate Couchbase with sample data
-npm start            # start API server on :3001
+npm run seed:copilot # load the wealth-management copilot dataset (the demo)
+# npm run seed       # optional: the 10 legacy demo holdings
 ```
 
-### 4. Open the Dashboard
+### 4. Run
 
-Open `client/index.html` in your browser (double-click it, or serve it):
 ```bash
-npx serve client     # serves on http://localhost:3000
+npm run dev          # API (:3001) + frontend (:3000) together
 ```
+
+Then open **http://localhost:3000/index.html**. Press **Ctrl-C** to stop both.
+
+<details><summary>Run the two servers separately</summary>
+
+```bash
+npm start            # API only, on :3001
+npm run serve        # frontend only, on :3000 (python3 -m http.server)
+```
+</details>
+
+> **Note:** the frontend lives at the repo root (`index.html`), not in a `client/` folder.
 
 ---
 
@@ -137,12 +148,38 @@ All copilot routes use a `{ data, error }` envelope (see the integration contrac
 | Method | Path | Feature | Owner |
 |--------|------|---------|-------|
 | GET | `/api/copilot/clients/:id/summary` | Client lookup & summary | Kevin (T1) |
-| GET | `/api/copilot/research/search?q=` | Research note search | Vani (T2) |
+| GET | `/api/copilot/research/search?q=` | Research note search (semantic via embeddings) | Vani (T2) |
 | GET / PATCH | `/api/copilot/clients/:id/memory` | Client memory assistant | Austin (T3) |
 | GET | `/api/copilot/clients/:id/esg` | ESG exposure calculator | JC (T4) |
-| POST | `/api/copilot/ask` | Repeat-question cache | Austin (T5) |
+| POST | `/api/copilot/ask` | Semantic cache → Gemma-generated answer | Austin (T5) |
+| GET | `/api/copilot/llm/health` | LM Studio availability + model IDs | — |
 
 Sample clients: `cli_10234` (Priya Nandakumar), `cli_10891` (Marcus Webb).
+
+### Local AI (LM Studio) — optional but recommended
+
+Research search and the Ask bar use **real embeddings + a local LLM** via [LM Studio](https://lmstudio.ai).
+When LM Studio isn't running, both features **fall back automatically** to keyword / Jaccard heuristics —
+the app never hard-fails.
+
+1. Install LM Studio and download two models:
+   - **Embeddings (BERT):** `text-embedding-bge-m3-embeddings`
+   - **Inference:** `google/gemma-4-e4b`
+2. Load them and start the local server (:1234). Via the CLI:
+   ```bash
+   lms load text-embedding-bge-m3-embeddings -y --ttl 3600
+   lms load google/gemma-4-e4b -y --ttl 3600
+   lms server start          # OpenAI-compatible API on http://localhost:1234/v1
+   ```
+   > Use the **API identifiers** above (from `lms ps`) in `.env` — not the GGUF filename
+   > (`bge-m3-embeddings-Q4_K_M-GGUF`), which the API rejects.
+3. Config lives in `.env` (see `.env.example`): `LMSTUDIO_BASE_URL`, `LMSTUDIO_EMBED_MODEL`,
+   `LMSTUDIO_CHAT_MODEL`, and `COPILOT_SEMANTIC_THRESHOLD` (default `0.75`).
+4. Check it's wired: `curl http://localhost:3001/api/copilot/llm/health`
+
+With LM Studio on, `POST /api/copilot/ask` embeds the question → semantic cache match → on a miss,
+retrieves the top research notes and generates a grounded answer with Gemma, then caches it so repeats
+become instant hits. See [`docs/architecture.html`](docs/architecture.html) for the full flow.
 
 ### Team plans
 
