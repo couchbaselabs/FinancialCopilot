@@ -108,3 +108,53 @@ Key: `transaction::<UUID>`
 | GET | `/api/transactions` | Recent transaction history |
 | POST | `/api/transactions` | Log a new trade |
 | GET | `/api/health` | Couchbase connectivity check |
+
+---
+
+## Advisor Copilot (the demo)
+
+The **Wealth Management Advisor Copilot** is the team demo built on top of this scaffold. It adds five
+assistant features over a client/holdings/research dataset, exposed under `/api/copilot/*` and surfaced
+in the dashboard's **Copilot** view (sidebar → Advisor Copilot).
+
+### Extra setup
+
+```bash
+npm run seed:copilot     # loads clients, holdings, research notes, memory, cache from
+                         # financial_services_samples.json (normalizes doc_type -> type)
+```
+
+For faster client-scoped lookups, add a secondary index in the Capella Query workbench:
+
+```sql
+CREATE INDEX idx_copilot_type_client ON `portfolio`(type, client_id);
+```
+
+### Copilot endpoints
+
+All copilot routes use a `{ data, error }` envelope (see the integration contract).
+
+| Method | Path | Feature | Owner |
+|--------|------|---------|-------|
+| GET | `/api/copilot/clients/:id/summary` | Client lookup & summary | Kevin (T1) |
+| GET | `/api/copilot/research/search?q=` | Research note search | Vani (T2) |
+| GET / PATCH | `/api/copilot/clients/:id/memory` | Client memory assistant | Austin (T3) |
+| GET | `/api/copilot/clients/:id/esg` | ESG exposure calculator | JC (T4) |
+| POST | `/api/copilot/ask` | Repeat-question cache | Austin (T5) |
+
+Sample clients: `cli_10234` (Priya Nandakumar), `cli_10891` (Marcus Webb).
+
+### Team plans
+
+Each person's self-contained plan lives in [`docs/team-plans/`](docs/team-plans/). **Read the
+[integration contract](docs/team-plans/integration-contract.md) first**, then your own file:
+
+- [Kevin — Client summary](docs/team-plans/kevin.md)
+- [Vani — Research search](docs/team-plans/vani.md)
+- [JC — ESG calculator](docs/team-plans/jc.md)
+- [Austin — Memory + cache](docs/team-plans/austin.md)
+
+> **Note on the bucket:** the `portfolio` bucket may also contain a separate fund-trading dataset
+> (`type: trade | position | fund`, keys `TRD-*` / `POS-*` / `FUND-*`), loadable via `npm run seed:trading`
+> and served under `/api/trading/*`. The copilot queries filter on `type` + `client_id`, so the two
+> datasets coexist without interfering.

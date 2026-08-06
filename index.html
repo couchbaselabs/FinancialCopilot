@@ -399,6 +399,39 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
+    /* ─── Copilot ────────────────────────────────── */
+    .copilot-bar { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+    .copilot-bar select { min-width: 260px; }
+    .client-headline { font-family: var(--font-display); font-size: 1.3rem; color: var(--ink); }
+    .client-narrative { font-size: 0.85rem; color: var(--slate); margin-top: 4px; max-width: 640px; line-height: 1.5; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em;
+    }
+    .badge.aligned      { background: rgba(34,197,94,0.14);  color: #15803D; }
+    .badge.misaligned   { background: rgba(245,158,11,0.16); color: #B45309; }
+    .badge.na           { background: var(--paper);          color: var(--slate); }
+    .badge.hit          { background: rgba(34,197,94,0.14);  color: #15803D; }
+    .badge.miss         { background: rgba(239,68,68,0.12);  color: #B91C1C; }
+    .fact-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 4px 0 16px; }
+    .fact-list li {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 0.85rem; color: var(--ink); line-height: 1.4;
+      padding: 8px 12px; background: var(--paper); border-radius: 8px;
+    }
+    .fact-list li::before { content: '▸'; color: var(--gold); flex-shrink: 0; }
+    .inline-form { display: flex; gap: 8px; margin-top: 10px; }
+    .inline-form input { flex: 1; }
+    .answer-box {
+      margin-top: 14px; padding: 16px; border-radius: 10px;
+      background: var(--paper); font-size: 0.88rem; color: var(--ink); line-height: 1.55;
+      display: none;
+    }
+    .answer-box.show { display: block; }
+    .answer-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.75rem; color: var(--slate); }
+    .esg-figure { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+
     @media (max-width: 1024px) {
       .stat-row { grid-template-columns: repeat(2, 1fr); }
       .grid-two { grid-template-columns: 1fr; }
@@ -432,6 +465,10 @@
       </div>
       <div class="nav-item" onclick="showView('analytics')">
         <span class="nav-icon">◬</span> Analytics
+      </div>
+      <div class="nav-label" style="margin-top:20px">Advisor Copilot</div>
+      <div class="nav-item" onclick="showView('copilot')">
+        <span class="nav-icon">✦</span> Copilot
       </div>
     </nav>
     <div class="sidebar-footer">
@@ -646,6 +683,92 @@
         </div>
       </div>
     </div>
+
+    <!-- ── COPILOT VIEW ── -->
+    <div id="view-copilot" class="content" style="display:none">
+      <!-- Client selector + summary (Kevin · Task 1) -->
+      <div class="copilot-bar">
+        <div class="form-group">
+          <label>Client</label>
+          <select id="cp-client" onchange="loadCopilot()">
+            <option value="cli_10234">Priya Nandakumar · cli_10234</option>
+            <option value="cli_10891">Marcus Webb · cli_10891</option>
+          </select>
+        </div>
+        <div>
+          <div class="client-headline" id="cp-headline">—</div>
+          <div class="client-narrative" id="cp-narrative">Select a client to load their copilot view.</div>
+        </div>
+      </div>
+
+      <div class="grid-two">
+        <!-- ESG exposure (JC · Task 4) -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">ESG Exposure</div>
+              <div class="card-subtitle">Screened vs. non-screened by market value</div>
+            </div>
+            <span class="badge na" id="cp-esg-badge">—</span>
+          </div>
+          <div class="card-body">
+            <div class="esg-figure">
+              <div class="donut-wrap" style="width:170px;height:170px;margin:0">
+                <canvas id="esgChart"></canvas>
+                <div class="donut-center">
+                  <div class="donut-pct" id="cp-esg-pct">—</div>
+                  <div class="donut-label">ESG</div>
+                </div>
+              </div>
+              <div class="legend-list" id="cp-esg-legend" style="flex:1;min-width:160px"></div>
+            </div>
+            <div class="client-narrative" id="cp-esg-note" style="margin-top:16px"></div>
+          </div>
+        </div>
+
+        <!-- Client memory (Austin · Task 3) -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Client Memory</div>
+              <div class="card-subtitle">Persistent notes across meetings</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <ul class="fact-list" id="cp-facts"><li>Loading…</li></ul>
+            <div class="client-narrative" id="cp-mem-summary"></div>
+            <div class="inline-form">
+              <input type="text" id="cp-fact-input" placeholder="Add a note (e.g. Interested in muni bonds)" onkeydown="if(event.key==='Enter')addFact()" />
+              <button class="btn btn-primary" onclick="addFact()">Add</button>
+            </div>
+            <div class="card-subtitle" id="cp-mem-updated" style="margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Repeat-question cache (Austin · Task 5) -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Ask the Copilot</div>
+            <div class="card-subtitle">Reworded repeats are served from the semantic cache</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="inline-form">
+            <input type="text" id="cp-ask-input" placeholder="e.g. is inflation hurting my bond portfolio?" onkeydown="if(event.key==='Enter')askCopilot()" />
+            <button class="btn btn-primary" onclick="askCopilot()">Ask</button>
+          </div>
+          <div class="answer-box" id="cp-answer">
+            <div class="answer-meta">
+              <span class="badge" id="cp-ask-badge"></span>
+              <span id="cp-ask-score"></span>
+            </div>
+            <div id="cp-ask-text"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -779,8 +902,9 @@ function showView(name) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   event.currentTarget.classList.add('active');
   document.getElementById('page-title').textContent =
-    { dashboard:'Dashboard', holdings:'Holdings', transactions:'Transactions', analytics:'Analytics' }[name];
+    { dashboard:'Dashboard', holdings:'Holdings', transactions:'Transactions', analytics:'Analytics', copilot:'Advisor Copilot' }[name];
   if (name === 'analytics') renderAnalytics();
+  if (name === 'copilot') loadCopilot();
 }
 
 // ── Data Loading ─────────────────────────────────────────────────────────────
@@ -1026,6 +1150,120 @@ function setDbStatus(ok) {
 
 function showConnBanner() {
   document.getElementById('conn-banner').style.display = 'flex';
+}
+
+// ── Copilot (Kevin T1 · JC T4 · Austin T3/T5) ─────────────────────────────────
+let esgChartInst = null;
+
+// Unwrap the { data, error } envelope used by /api/copilot/*
+async function fetchData(url, opts) {
+  const r = await fetch(url, opts);
+  const body = await r.json();
+  if (!r.ok || body.error) throw new Error(body.error || ('HTTP ' + r.status));
+  return body.data;
+}
+
+function currentClient() { return document.getElementById('cp-client').value; }
+
+async function loadCopilot() {
+  await Promise.all([loadClientSummary(), loadEsg(), loadMemory()]);
+}
+
+// Kevin · Task 1 — client summary header
+async function loadClientSummary() {
+  try {
+    const s = await fetchData(`${API}/copilot/clients/${currentClient()}/summary`);
+    document.getElementById('cp-headline').textContent = s.name;
+    document.getElementById('cp-narrative').textContent = s.narrative;
+  } catch (e) {
+    document.getElementById('cp-narrative').textContent = 'Could not load summary — is the server running?';
+  }
+}
+
+// JC · Task 4 — ESG exposure
+async function loadEsg() {
+  try {
+    const d = await fetchData(`${API}/copilot/clients/${currentClient()}/esg`);
+    const pct = Math.round(d.esg_screened_pct * 100);
+    document.getElementById('cp-esg-pct').textContent = pct + '%';
+    document.getElementById('cp-esg-note').textContent = d.alignment_note;
+
+    const badge = document.getElementById('cp-esg-badge');
+    const label = { aligned:'✓ Aligned', misaligned:'⚠ Misaligned', not_applicable:'— No preference' }[d.alignment];
+    badge.className = 'badge ' + { aligned:'aligned', misaligned:'misaligned', not_applicable:'na' }[d.alignment];
+    badge.textContent = label;
+
+    const screened = d.esg_screened_value_usd, non = d.non_screened_value_usd;
+    const ctx = document.getElementById('esgChart').getContext('2d');
+    if (esgChartInst) esgChartInst.destroy();
+    esgChartInst = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['ESG-screened', 'Non-screened'],
+        datasets: [{ data: [screened, non], backgroundColor: ['#22C55E', '#8892A4'], borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: { cutout: '72%', plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt(c.raw)}` } } } }
+    });
+    document.getElementById('cp-esg-legend').innerHTML = [
+      { n:'ESG-screened', v:screened, c:'#22C55E' },
+      { n:'Non-screened', v:non, c:'#8892A4' },
+    ].map(r => `<div class="legend-item"><div class="legend-dot" style="background:${r.c}"></div>
+        <span class="legend-name">${r.n}</span><span class="legend-pct">${fmt(r.v)}</span></div>`).join('');
+  } catch (e) {
+    document.getElementById('cp-esg-note').textContent = 'Could not load ESG data.';
+  }
+}
+
+// Austin · Task 3 — client memory
+async function loadMemory() {
+  try {
+    const m = await fetchData(`${API}/copilot/clients/${currentClient()}/memory`);
+    const facts = m.key_facts || [];
+    document.getElementById('cp-facts').innerHTML = facts.length
+      ? facts.map(f => `<li>${f}</li>`).join('')
+      : '<li style="background:none;color:var(--slate)">No notes yet.</li>';
+    document.getElementById('cp-mem-summary').textContent = m.memory_summary || '';
+    document.getElementById('cp-mem-updated').textContent =
+      m.last_updated ? 'Last updated ' + fmtDate(m.last_updated) : '';
+  } catch (e) {
+    document.getElementById('cp-facts').innerHTML = '<li style="background:none;color:var(--red)">Could not load memory.</li>';
+  }
+}
+
+async function addFact() {
+  const input = document.getElementById('cp-fact-input');
+  const fact = input.value.trim();
+  if (!fact) return;
+  try {
+    await fetchData(`${API}/copilot/clients/${currentClient()}/memory`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ add_fact: fact })
+    });
+    input.value = '';
+    await loadMemory();
+  } catch (e) { alert('Failed to save note. Is the server running?'); }
+}
+
+// Austin · Task 5 — repeat-question cache
+async function askCopilot() {
+  const input = document.getElementById('cp-ask-input');
+  const question = input.value.trim();
+  if (!question) return;
+  const box = document.getElementById('cp-answer');
+  const badge = document.getElementById('cp-ask-badge');
+  try {
+    const d = await fetchData(`${API}/copilot/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+    badge.className = 'badge ' + (d.cache_hit ? 'hit' : 'miss');
+    badge.textContent = d.cache_hit ? '⚡ Cache HIT' : '○ Cache MISS';
+    document.getElementById('cp-ask-score').textContent =
+      'score ' + d.match_score + (d.matched_cache_id ? ' · ' + d.matched_cache_id : '');
+    document.getElementById('cp-ask-text').textContent = d.answer;
+    box.classList.add('show');
+  } catch (e) { alert('Ask failed. Is the server running?'); }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
