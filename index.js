@@ -133,7 +133,7 @@ app.post('/api/transactions', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   try {
     await connect();
-    res.json({ status: 'ok', db: 'Couchbase Capella connected' });
+    res.json({ status: 'ok', db: `Couchbase connected (${process.env.CB_ENDPOINT || 'unknown'}, bucket "${BUCKET}")` });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
   }
